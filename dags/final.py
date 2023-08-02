@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime
+from datetime import timedelta
 import requests
 import pandas as pd
 import numpy as np
@@ -16,6 +16,8 @@ import numpy as np
 import psycopg2
 from sqlalchemy import create_engine
 import time
+from airflow.sensors.external_task_sensor import ExternalTaskSensor
+
 
 secrets_path = '/etc/airflow/secrets.json'
 
@@ -229,6 +231,8 @@ def _load_add_new_song_master():
     filtered_master['writer'] = np.nan
     filtered_master.to_sql(name='song_song', con=engine, if_exists='append', index=False, method='multi', chunksize=1000)
     
+    
+
 
 with DAG(
     dag_id='final',
