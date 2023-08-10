@@ -17,6 +17,8 @@ import psycopg2
 from sqlalchemy import create_engine
 import time
 from airflow.sensors.external_task_sensor import ExternalTaskSensor
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import text
 
 
 secrets_path = '/etc/airflow/secrets.json'
@@ -25,6 +27,11 @@ with open(secrets_path) as f:
     secrets = json.loads(f.read())
 # 적재할 DB 설정
 engine = create_engine(secrets['DB_ADDRESS'])
+Session = sessionmaker(bind=engine)
+session = Session()
+result = session.execute(text(f"SELECT master_number FROM song_song ORDER BY master_number DESC LIMIT 1"))
+last_master_number = result.fetchone()[0]
+session.close()
 
 # 전처리하는 함수
 def _preprocess_sentence(sentence):
@@ -57,7 +64,7 @@ def _new_tj():
     tj_url = "https://www.tjmedia.com/tjsong/song_monthNew.asp"
     r = requests.get(tj_url, headers = head)
     r.encoding = 'utf-8'
-    bs = BS(r.text)
+    bs = BS(r.text,features="lxml")
     table = bs.find("table",class_="board_type1")
     new_tj = pd.read_html(str(table))[0]
     new_tj = new_tj[['곡 번호','곡 제목','가수']]
@@ -68,24 +75,32 @@ def _new_tj():
     new_tj['play'] = new_tj['play'].apply(lambda x : str(x))
     # new_tj['tj_song_num_id'] = new_tj['tj_song_num_id'].apply(lambda x : str(x))
     new_tj.to_csv("/opt/airflow/data/new_tj_after.csv", index = False)
+    time.sleep(5)
     master_tj = pd.read_csv("/opt/airflow/data/master_tj.csv")
+    time.sleep(5)
     add_tj = pd.merge(master_tj,new_tj,how='outer')
     add_tj.rename(columns={'tj_song_num_id':'song_num'},inplace=True)
     add_tj= add_tj.drop_duplicates(subset='song_num').reset_index(drop=True)
     add_tj.to_csv("/opt/airflow/data/add_tj.csv",index=False)
+    time.sleep(5)
 
 def _minus_tj():
     new_tj_before = pd.read_csv("/opt/airflow/data/new_tj.csv")
+    time.sleep(5)
     new_tj_after = pd.read_csv("/opt/airflow/data/new_tj_after.csv")
+    time.sleep(5)
     minus_tj = new_tj_after.merge(new_tj_before, how='outer', indicator=True)
     minus_tj = minus_tj[minus_tj['_merge'] == 'left_only'].drop('_merge',axis=1)
     minus_tj.to_csv("/opt/airflow/data/minus_tj.csv",index=False)
+    time.sleep(5)
     new_tj_after.to_csv("/opt/airflow/data/new_tj.csv",index=False)
+    time.sleep(5)
 
 # tj신곡만 계속 업데이트가 되기 위해서는 우선 tj데이터가 song_tjsong에 있어야한다.
 # tj신곡만 append
 def _load_add_new_tj():
     minus_tj = pd.read_csv("/opt/airflow/data/minus_tj.csv")
+    time.sleep(5)
     minus_tj = minus_tj.rename(columns={"tj_song_num_id":"song_num"})
     minus_tj.to_sql(name='song_tjsong', con=engine, if_exists='append', index=False, method='multi', chunksize=1000)
     
@@ -98,7 +113,7 @@ def _new_ky():
         try:
             url = f"https://kysing.kr/latest/?s_page={page}"
             r = requests.get(url, headers=head)
-            bs = BS(r.text)
+            bs = BS(r.text,features="lxml")
             for i in bs.findAll("li",class_="search_chart_num")[1:]:
                 num.append(i.text)
             for i in bs.findAll("span",class_="tit")[::2]:
@@ -115,33 +130,43 @@ def _new_ky():
     new_ky['play']=new_ky['play'].apply(lambda x:str(x))
     new_ky['ky_song_num_id'] = new_ky['ky_song_num_id'].apply(lambda x : int(x))
     new_ky.to_csv("/opt/airflow/data/new_ky_after.csv",index=False)
+    time.sleep(5)
     master_ky = pd.read_csv("/opt/airflow/data/master_ky.csv")
+    time.sleep(5)
     master_ky['play']=master_ky['play'].apply(lambda x:str(x))
     add_ky = pd.merge(new_ky,master_ky,how='outer').reset_index(drop=True)
     add_ky.rename(columns={'ky_song_num_id':'song_num','제목_KY':'title','가수_KY':'artist'},inplace=True)
     add_ky= add_ky.drop_duplicates(subset='song_num').reset_index(drop=True)
     add_ky.to_csv("/opt/airflow/data/add_ky.csv",index=False)
+    time.sleep(5)
 
 
 def _minus_ky():
     new_ky_before = pd.read_csv("/opt/airflow/data/new_ky.csv")
+    time.sleep(5)
     new_ky_after = pd.read_csv("/opt/airflow/data/new_ky_after.csv")
+    time.sleep(5)
     minus_ky = new_ky_after.merge(new_ky_before, how='outer', indicator=True)
     minus_ky = minus_ky[minus_ky['_merge'] == 'left_only'].drop('_merge',axis=1)
     minus_ky.to_csv("/opt/airflow/data/minus_ky.csv",index=False)
+    time.sleep(5)
     new_ky_after.to_csv("/opt/airflow/data/new_ky.csv",index=False)
+    time.sleep(5)
 
 # ky신곡만 계속 업데이트가 되기 위해서는 우선 ky데이터가 song_kysong에 있어야한다.
 # ky신곡만 append
 def _load_add_new_ky():
     minus_ky = pd.read_csv("/opt/airflow/data/minus_ky.csv")
+    time.sleep(5)
     minus_ky = minus_ky.rename(columns={"ky_song_num_id":"song_num","제목_KY":"title","가수_KY":"artist"})
     minus_ky.to_sql(name='song_kysong', con=engine, if_exists='append', index=False, method='multi', chunksize=1000)  
     
     
 def _new_song():
     new_tj = pd.read_csv("/opt/airflow/data/new_tj.csv")
+    time.sleep(5)
     new_ky = pd.read_csv("/opt/airflow/data/new_ky.csv")
+    time.sleep(5)
     new_song = pd.merge(new_tj,new_ky,how='outer')
     new_song.drop_duplicates(subset=['play'],keep='first',inplace=True)
     new_song.reset_index(drop=True, inplace=True)
@@ -151,10 +176,12 @@ def _new_song():
     # new_song['tj_song_num_id'] = new_song['tj_song_num_id'].apply(lambda x: int(x) if type(x) == float else x).apply(lambda x : str(x))
     # new_song['ky_song_num_id'] = new_song['ky_song_num_id'].apply(lambda x: int(x) if type(x) == float else x).apply(lambda x : str(x))
     new_song.to_csv("/opt/airflow/data/new_song.csv",index=False)
+    time.sleep(5)
 
 
 def _add_genre():
     new_song = pd.read_csv("/opt/airflow/data/new_song.csv")
+    time.sleep(5)
     new_song['melon_tj'] = new_song['title'] + ' ' + new_song['artist']
     new_song['melon_ky'] = new_song['제목_KY'] + ' ' + new_song['가수_KY']
     for i in range(len(new_song)):
@@ -166,7 +193,7 @@ def _add_genre():
         url = f"https://www.melon.com/search/song/index.htm?q={keyword}&section=&searchGnbYn=Y&kkoSpl=Y&kkoDpType=&mwkLogType=T"
         r = requests.get(url,headers=head)
         time.sleep(1)
-        bs = BS(r.text)
+        bs = BS(r.text,features="lxml")
         button = bs.find("button", class_="btn_icon play")
         if button and button.has_attr("onclick"):
             onclick_value = button["onclick"]
@@ -188,7 +215,7 @@ def _add_genre():
         if i != 'Null':
             url = f"https://www.melon.com/song/detail.htm?songId={i}"
             r = requests.get(url, headers = head)
-            bs = BS(r.text)
+            bs = BS(r.text,features="lxml")
             tmp.append(bs.find("div").findAll("dd")[2].text)
         else:
             tmp.append(np.nan)
@@ -196,37 +223,51 @@ def _add_genre():
     # new_song['genre'] = new_song['genre'].apply(lambda x : x.replace("Null","?"))
     # new_song.fillna("?",inplace=True)
     new_song.to_csv("/opt/airflow/data/new_song.csv",index=False)   
+    time.sleep(5)
     
     
 def _update_master():
     new_song = pd.read_csv("/opt/airflow/data/new_song.csv")
+    new_song['genre'] = new_song['genre'].apply(lambda x : str(x))
+    time.sleep(5)
     master = pd.read_csv("/opt/airflow/data/master.csv")
+    time.sleep(5)
     master['tj_song_num_id'] = pd.to_numeric(master['tj_song_num_id'], errors='coerce').fillna(0).astype(int)
     master['ky_song_num_id'] = pd.to_numeric(master['ky_song_num_id'], errors='coerce').fillna(0).astype(int)
     master_after = pd.merge(new_song,master,how='outer')
     # master.fillna('?',inplace=True)
     master_after.drop_duplicates(subset='play',inplace=True)
     master.to_csv("/opt/airflow/data/master.csv",index=False)
+    time.sleep(5)
     master_after.to_csv("/opt/airflow/data/master_after.csv",index=False)
+    time.sleep(5)
     
 def _minus_master():
     master_before = pd.read_csv("/opt/airflow/data/master.csv")
+    time.sleep(5)
     master_after = pd.read_csv("/opt/airflow/data/master_after.csv")
+    time.sleep(5)
     minus_master = master_after.merge(master_before, how='outer', indicator=True)
     minus_master = minus_master[minus_master['_merge'] == 'left_only'].drop('_merge',axis=1)
     minus_master.to_csv("/opt/airflow/data/minus_master.csv",index=False)
+    time.sleep(5)
     master_after.to_csv("/opt/airflow/data/master.csv",index=False)
+    time.sleep(5)
     
     
 # 신곡만 계속 업데이트가 되기 위해서는 우선 master데이터(매칭데이터)가 song_song에 있어야한다.
 def _load_add_new_song_master():
     add_tj = pd.read_csv("/opt/airflow/data/add_tj.csv")
+    time.sleep(5)
     add_ky = pd.read_csv("/opt/airflow/data/add_ky.csv")
+    time.sleep(5)
     minus_master = pd.read_csv("/opt/airflow/data/minus_master.csv")
-    filtered_master = minus_master[minus_master['tj_song_num_id'].isin(add_tj['song_num'])]
-    filtered_master = filtered_master[filtered_master['ky_song_num_id'].isin(add_ky['song_num'])]
+    time.sleep(5)
+    filtered_master_tj = minus_master[minus_master['tj_song_num_id'].isin(add_tj['song_num'])]
+    filtered_master_ky = minus_master[minus_master['ky_song_num_id'].isin(add_ky['song_num'])]
+    filtered_master = pd.concat([filtered_master_tj,filtered_master_ky])
     filtered_master.reset_index(drop=True,inplace=True)
-    filtered_master['master_number']=filtered_master.index
+    filtered_master['master_number']=filtered_master.index + (last_master_number + 1)
     filtered_master['cmp'] = np.nan
     filtered_master['writer'] = np.nan
     filtered_master.to_sql(name='song_song', con=engine, if_exists='append', index=False, method='multi', chunksize=1000)
