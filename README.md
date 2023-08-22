@@ -1,3 +1,11 @@
+이 레포지토리는, 프로젝트 🎤**알송달송**(Ai 기반 부를 노래 추천)의 **Airflow Dags 모음집**입니다.<br>
+프로젝트의 전반적인 내용이 궁금하다면 [이곳](https://github.com/romantiveloper/Alsong-Dlsong)을 클릭해주세요!<br><br>
+
+# 곡정보 데이터 ETL, 모델링, 서빙 Airflow 
+
+![image](https://github.com/OhJune/Airflow/assets/124857930/8f9387b6-5c16-48b9-9bc1-ec3e541c36d5)
+
+
 ## 😎airflow를 compose 형태로 묶음😎
 
 ### 1) 신곡 수집 자동화
